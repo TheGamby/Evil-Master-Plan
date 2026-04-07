@@ -4,7 +4,7 @@ import SwiftData
 struct BubbleNetworkView: View {
     @Query private var projects: [Project]
     @Query private var dependencies: [Dependency]
-    @Query private var preferences: [ViewPreferences]
+    @Query private var preferences: [VisualizationPreferences]
 
     var body: some View {
         GeometryReader { proxy in
@@ -13,36 +13,49 @@ struct BubbleNetworkView: View {
                 projects: projects,
                 dependencies: dependencies,
                 sizing: preferences.first?.bubbleSizingCriterion ?? .priority,
-                canvasWidth: canvasWidth
+                canvasWidth: canvasWidth,
+                showsOnlyHighPriorityProjects: preferences.first?.showsOnlyHighPriorityProjects ?? false
             )
 
             ScrollView([.horizontal, .vertical]) {
                 VStack(alignment: .leading, spacing: 20) {
                     PanelCard(title: "Bubble Network", subtitle: "Node size already follows a real preference instead of a fixed mock size.") {
-                        Picker("Bubble Size", selection: bubbleSizingBinding) {
-                            ForEach(BubbleSizingCriterion.allCases) { criterion in
-                                Text(criterion.title).tag(criterion)
+                        VStack(alignment: .leading, spacing: 14) {
+                            Picker("Bubble Size", selection: bubbleSizingBinding) {
+                                ForEach(BubbleSizingCriterion.allCases) { criterion in
+                                    Text(criterion.title).tag(criterion)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            Toggle("High-priority projects only", isOn: highPriorityOnlyBinding)
+                        }
+                    }
+
+                    if projection.nodes.isEmpty {
+                        EmptyStateView(
+                            title: "No Bubble Nodes To Show",
+                            message: "The current filter removed every project from the network.",
+                            systemImage: "circle.dotted.circle"
+                        )
+                    } else {
+                        ZStack {
+                            ForEach(projection.edges) { edge in
+                                DependencyEdgeView(edge: edge)
+                            }
+
+                            ForEach(projection.nodes) { node in
+                                BubbleNodeView(node: node)
+                                    .position(node.center)
                             }
                         }
-                        .pickerStyle(.segmented)
+                        .frame(width: projection.canvasSize.width, height: projection.canvasSize.height)
+                        .padding(24)
+                        .background(
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.82))
+                        )
                     }
-
-                    ZStack {
-                        ForEach(projection.edges) { edge in
-                            DependencyEdgeView(edge: edge)
-                        }
-
-                        ForEach(projection.nodes) { node in
-                            BubbleNodeView(node: node)
-                                .position(node.center)
-                        }
-                    }
-                    .frame(width: projection.canvasSize.width, height: projection.canvasSize.height)
-                    .padding(24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .fill(.ultraThinMaterial.opacity(0.82))
-                    )
                 }
                 .padding(24)
             }
@@ -55,6 +68,15 @@ struct BubbleNetworkView: View {
             get: { preferences.first?.bubbleSizingCriterion ?? .priority },
             set: { newValue in
                 preferences.first?.bubbleSizingCriterion = newValue
+            }
+        )
+    }
+
+    private var highPriorityOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.first?.showsOnlyHighPriorityProjects ?? false },
+            set: { newValue in
+                preferences.first?.showsOnlyHighPriorityProjects = newValue
             }
         )
     }

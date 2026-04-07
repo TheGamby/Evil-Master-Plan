@@ -2,21 +2,33 @@
 
 Evil Master Plan is a SwiftUI multiplatform planning app for macOS, iPadOS, and iPhone. It is designed for visually driven, parallel project work: many active projects, many steps, visible dependencies, and fast capture without turning into admin software.
 
-## Current Goal
+## Platforms and Stack
 
-This repository now contains a pragmatic production-ready foundation:
+- macOS
+- iPadOS
+- iPhone
+- Swift
+- SwiftUI
+- SwiftData
+- no third-party dependencies
+
+## Current State
+
+The repository now contains a hardened Phase-2 foundation:
 
 - one shared planning model
 - SwiftData-backed local persistence
 - an adaptive app shell for macOS, iPadOS, and iPhone
-- first real screens for Projects, Inbox, Bubble Network, Gantt, Dependencies, Dashboard, and Settings
-- seed data and previews so the app is immediately explorable
+- real baseline screens for Projects, Inbox, Bubble Network, Gantt, Dependencies, Dashboard, and Settings
+- controlled seed/bootstrap data for first launch and previews
+- projection logic that keeps Bubble, Gantt, and Dependencies on the same stored entities
+- basic tests for model invariants, seeding, and shared projections
 
 ## Architecture
 
 The app uses one central domain model and multiple projection layers:
 
-- Persistent core models: `Project`, `ProjectStep`, `Dependency`, `IdeaInboxItem`, `ViewPreferences`
+- Persistent core models: `Project`, `ProjectStep`, `Dependency`, `IdeaInboxItem`, `VisualizationPreferences`
 - Shared projection types: `BubbleNetworkProjection`, `GanttProjection`, `DependencyRowProjection`, `DashboardSnapshot`
 - SwiftUI feature screens read the same stored models and render different representations
 
@@ -31,6 +43,22 @@ SwiftData is used because the app needs:
 - a path toward CloudKit/iCloud sync later
 
 The persistence setup is centralized in [PersistenceController.swift](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Data/PersistenceController.swift), so storage concerns stay out of feature views.
+
+## Folder Structure
+
+- [App](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/App): app entry, destinations, shell
+- [Domain](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Domain): persistent entities, enums, shared projections
+- [Data](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Data): `ModelContainer`, bootstrap, sample content
+- [Features/Dashboard](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Dashboard)
+- [Features/Projects](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Projects)
+- [Features/Inbox](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Inbox)
+- [Features/BubbleNetwork](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/BubbleNetwork)
+- [Features/Gantt](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Gantt)
+- [Features/Dependencies](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Dependencies)
+- [Features/Settings](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Settings)
+- [DesignSystem](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/DesignSystem): panels, badges, empty states, theme
+- [Shared](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Shared): cross-feature SwiftUI helpers
+- [PreviewSupport](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/PreviewSupport): in-memory preview container
 
 ## Data Model Overview
 
@@ -47,6 +75,7 @@ The persistence setup is centralized in [PersistenceController.swift](/Volumes/D
 - belongs to a project
 - carries status, priority, progress, notes, ordering, and optional dates
 - milestone handling is intentionally embedded here via `ProjectStepKind`
+- supports both Gantt rows and dependency endpoints without a second task model
 
 This means milestones are not a second task system. They are steps with a milestone kind.
 
@@ -65,49 +94,41 @@ This is deliberate. SwiftData does not offer a good polymorphic relationship sto
 - conversion/archive state
 - optional linked project
 
-### `ViewPreferences`
+### `VisualizationPreferences`
 
 - bubble sizing criterion
 - default project sort
-- timeline visibility preferences
+- completed-item visibility
+- high-priority-only filtering
+- singleton-style app scope via a unique `scope` key
 
-## Folder Structure
+## What Works Right Now
 
-- [App](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/App)
-- [Domain](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Domain)
-- [Data](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Data)
-- [Features/Dashboard](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Dashboard)
-- [Features/Projects](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Projects)
-- [Features/Inbox](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Inbox)
-- [Features/BubbleNetwork](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/BubbleNetwork)
-- [Features/Gantt](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Gantt)
-- [Features/Dependencies](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Dependencies)
-- [Features/Settings](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Features/Settings)
-- [DesignSystem](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/DesignSystem)
-- [Shared](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Shared)
-- [PreviewSupport](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/PreviewSupport)
+- `WindowGroup` app shell with a single adaptive `NavigationSplitView`
+- dashboard snapshot built from shared project and step data
+- project list with selection plus an editable detail panel
+- project steps and milestones edited as one unified structure
+- inbox capture, archive, and promotion into projects
+- bubble view driven by real projects and real dependency counts
+- Gantt projection driven by project and step dates from the same store
+- dependency screen showing predecessor/successor relationships from stored `Dependency` records
+- settings persisted through `VisualizationPreferences`
+- in-memory previews and first-run bootstrap using the same `SeedData` source
 
-## Current Implementation Status
+## Intentional Phase-2 Decisions
 
-Implemented now:
+- Milestones stay embedded in `ProjectStep` via `ProjectStepKind`. There is no parallel milestone entity.
+- Bubble sizing is based only on real stored or derived data (`priority`, `progress`, `dependencyCount`). The earlier fake “effort” sizing axis was removed.
+- Preferences are persisted as a single app-scoped record instead of scattered view-local toggles.
+- Preview data and runtime bootstrap both use [SeedData.swift](/Volumes/Development/source/gamby/Evil Master Plan/Evil Master Plan/Data/SeedData.swift), but preview container setup stays separate from production persistence.
 
-- normal `WindowGroup` app shell instead of the document-based Xcode template
-- central SwiftData container
-- initial sample data bootstrap for first launch and previews
-- project list plus inline project/step editing
-- fast inbox capture and project promotion
-- first bubble graph with dependency lines and preference-driven node size
-- first Gantt timeline with bars and milestone markers
-- first dependency screen with shared-link rendering
-- dashboard summary and settings groundwork
+## Prepared but Not Finished
 
-Prepared but intentionally still minimal:
-
-- CloudKit sync activation
-- richer dependency graph layouts and critical-chain logic
-- force-directed bubble layout
-- advanced validation and conflict handling
-- focus/day-planning workflows beyond the first dashboard
+- CloudKit sync activation and entitlement setup
+- richer dependency editing and arrow-based visualization
+- interactive bubble layout, selection, and graph navigation
+- dedicated project/step validation flows and reordering
+- more advanced focus/day-planning workflows
 
 ## CloudKit / iCloud Preparation
 
@@ -125,14 +146,22 @@ This repo currently avoids forcing entitlement changes from code because that wo
 
 ## Testing
 
-The unit tests cover:
+The current unit tests cover:
 
 - sample graph integrity
 - projection generation for Bubble and Gantt
 - bootstrap seeding behavior for in-memory SwiftData stores
+- singleton preference seeding
+- basic model invariant enforcement for project and step date/progress normalization
+
+## Known Limits
+
+- Most editing still happens directly against SwiftData models from SwiftUI views; Phase 2 reduced this, but there is not yet a dedicated mutation/service layer.
+- Dependency creation and editing UI is still minimal compared with the read-side visualizations.
+- The current Bubble and Gantt layouts are functional foundations, not final interaction models.
 
 ## Next 3 Sensible Steps
 
-1. Add dedicated project and step detail flows with validation, step reordering, and richer editing affordances.
-2. Replace the simple bubble layout and dependency list with a real graph engine and interactive selection/highlighting.
-3. Add CloudKit capability setup, then test multi-device sync and merge behavior before broadening the model further.
+1. Introduce a small planning mutation layer so project, step, inbox, and dependency writes stop living in SwiftUI view files.
+2. Add dependency authoring plus step reordering, then tighten validation around schedules and illegal graph links.
+3. Enable CloudKit capabilities in Xcode, switch the container configuration intentionally, and test sync/merge behavior across devices.

@@ -34,4 +34,20 @@ extension IdeaInboxItem {
     func touch(at date: Date = .now) {
         updatedAt = date
     }
+
+    func archive(at date: Date = .now) {
+        state = .archived
+        touch(at: date)
+    }
+
+    @discardableResult
+    func promoteToProject(now: Date = .now) -> Project {
+        let project = Project.starter(title: title, now: now)
+        project.summary = body.isEmpty ? project.summary : body
+        project.tags = ["inbox"]
+        linkedProject = project
+        state = .converted
+        touch(at: now)
+        return project
+    }
 }

@@ -7,7 +7,7 @@ enum PersistenceController {
         ProjectStep.self,
         Dependency.self,
         IdeaInboxItem.self,
-        ViewPreferences.self,
+        VisualizationPreferences.self,
     ])
 
     static func makeDefaultContainer(enableCloudKitSync: Bool = false) -> ModelContainer {

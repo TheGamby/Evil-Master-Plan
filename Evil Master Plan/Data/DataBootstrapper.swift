@@ -6,21 +6,17 @@ enum DataBootstrapper {
     static func seedIfNeeded(in context: ModelContext) throws {
         let projectCount = try context.fetchCount(FetchDescriptor<Project>())
         let inboxCount = try context.fetchCount(FetchDescriptor<IdeaInboxItem>())
-        let preferencesCount = try context.fetchCount(FetchDescriptor<ViewPreferences>())
+        let preferencesCount = try context.fetchCount(FetchDescriptor<VisualizationPreferences>())
 
         if projectCount == 0 && inboxCount == 0 {
-            let snapshot = SeedData.makeSampleSnapshot()
-            snapshot.projects.forEach(context.insert)
-            snapshot.dependencies.forEach(context.insert)
-            snapshot.inboxItems.forEach(context.insert)
-
-            if preferencesCount == 0 {
-                context.insert(snapshot.preferences)
-            }
+            SeedData.installSampleContent(
+                in: context,
+                includePreferences: preferencesCount == 0
+            )
         } else if preferencesCount == 0 {
-            context.insert(ViewPreferences.default)
+            context.insert(VisualizationPreferences.default)
         }
 
-        try context.save()
+        try context.saveIfNeeded()
     }
 }

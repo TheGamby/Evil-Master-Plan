@@ -1,13 +1,28 @@
 import Foundation
+import SwiftData
 
 struct SeedSnapshot {
     let projects: [Project]
     let dependencies: [Dependency]
     let inboxItems: [IdeaInboxItem]
-    let preferences: ViewPreferences
+    let preferences: VisualizationPreferences
 }
 
 enum SeedData {
+    static func installSampleContent(
+        in context: ModelContext,
+        now: Date = .now,
+        includePreferences: Bool = true
+    ) {
+        let snapshot = makeSampleSnapshot(now: now)
+        snapshot.projects.forEach(context.insert)
+        snapshot.dependencies.forEach(context.insert)
+        snapshot.inboxItems.forEach(context.insert)
+        if includePreferences {
+            context.insert(snapshot.preferences)
+        }
+    }
+
     static func makeSampleSnapshot(now: Date = .now) -> SeedSnapshot {
         let calendar = Calendar.current
 
@@ -221,11 +236,11 @@ enum SeedData {
             projects: [atlas, pulse, lattice, sketchbook],
             dependencies: dependencies,
             inboxItems: inboxItems,
-            preferences: ViewPreferences(
+            preferences: VisualizationPreferences(
                 bubbleSizingCriterion: .priority,
                 projectSortCriterion: .updatedAt,
-                showCompletedItems: true,
-                highlightOnlyHighPriority: false
+                showsCompletedItems: true,
+                showsOnlyHighPriorityProjects: false
             )
         )
     }

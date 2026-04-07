@@ -3,7 +3,7 @@ import SwiftData
 
 struct GanttView: View {
     @Query private var projects: [Project]
-    @Query private var preferences: [ViewPreferences]
+    @Query private var preferences: [VisualizationPreferences]
 
     private let dayWidth: CGFloat = 34
     private let labelWidth: CGFloat = 220
@@ -11,7 +11,8 @@ struct GanttView: View {
     private var projection: GanttProjection {
         PlanningProjectionFactory.gantt(
             projects: projects,
-            showCompletedItems: preferences.first?.showCompletedItems ?? true
+            showCompletedItems: preferences.first?.showsCompletedItems ?? true,
+            showsOnlyHighPriorityProjects: preferences.first?.showsOnlyHighPriorityProjects ?? false
         )
     }
 
@@ -19,26 +20,37 @@ struct GanttView: View {
         ScrollView([.horizontal, .vertical]) {
             VStack(alignment: .leading, spacing: 18) {
                 PanelCard(title: "Timeline", subtitle: "Projects and steps are rendered from the same shared dates used elsewhere.") {
-                    Toggle("Show completed items", isOn: showCompletedItemsBinding)
-                }
-
-                VStack(spacing: 0) {
-                    timelineHeader
-                    Divider().overlay(.white.opacity(0.08))
-                    ForEach(projection.rows) { row in
-                        GanttRowView(
-                            row: row,
-                            timelineStart: projection.timelineStart,
-                            dayWidth: dayWidth,
-                            labelWidth: labelWidth
-                        )
-                        Divider().overlay(.white.opacity(0.05))
+                    VStack(alignment: .leading, spacing: 14) {
+                        Toggle("Show completed items", isOn: showCompletedItemsBinding)
+                        Toggle("High-priority projects only", isOn: highPriorityOnlyBinding)
                     }
                 }
-                .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.ultraThinMaterial.opacity(0.92))
-                )
+
+                if projection.rows.isEmpty {
+                    EmptyStateView(
+                        title: "No Timeline Rows To Show",
+                        message: "The current filters removed every project from the Gantt baseline.",
+                        systemImage: "chart.bar.xaxis"
+                    )
+                } else {
+                    VStack(spacing: 0) {
+                        timelineHeader
+                        Divider().overlay(.white.opacity(0.08))
+                        ForEach(projection.rows) { row in
+                            GanttRowView(
+                                row: row,
+                                timelineStart: projection.timelineStart,
+                                dayWidth: dayWidth,
+                                labelWidth: labelWidth
+                            )
+                            Divider().overlay(.white.opacity(0.05))
+                        }
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(.ultraThinMaterial.opacity(0.92))
+                    )
+                }
             }
             .padding(24)
         }
@@ -62,8 +74,15 @@ struct GanttView: View {
 
     private var showCompletedItemsBinding: Binding<Bool> {
         Binding(
-            get: { preferences.first?.showCompletedItems ?? true },
-            set: { preferences.first?.showCompletedItems = $0 }
+            get: { preferences.first?.showsCompletedItems ?? true },
+            set: { preferences.first?.showsCompletedItems = $0 }
+        )
+    }
+
+    private var highPriorityOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.first?.showsOnlyHighPriorityProjects ?? false },
+            set: { preferences.first?.showsOnlyHighPriorityProjects = $0 }
         )
     }
 }
@@ -79,10 +98,11 @@ private struct GanttRowView: View {
             HStack(spacing: 12) {
                 Circle()
                     .fill(AppTheme.projectColor(row.colorToken))
-                    .frame(width: row.indentLevel == 0 ? 12 : 8, height: row.indentLevel == 0 ? 12 : 8)
+                    .frame(width: row.kind == .project ? 12 : 8, height: row.kind == .project ? 12 : 8)
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(row.title)
-                        .font(row.indentLevel == 0 ? .headline : .subheadline.weight(.medium))
+                        .font(row.kind == .project ? .headline : .subheadline.weight(.medium))
                     Text(row.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)

@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
-    @Query private var preferences: [ViewPreferences]
+    @Query private var preferences: [VisualizationPreferences]
 
     var body: some View {
         ScrollView {
@@ -24,10 +24,16 @@ struct SettingsView: View {
                             }
                             .pickerStyle(.menu)
 
-                            Toggle("Show completed items in timelines", isOn: binding(preferences, for: \.showCompletedItems))
-                            Toggle("Highlight only high-priority work", isOn: binding(preferences, for: \.highlightOnlyHighPriority))
+                            Toggle("Show completed items in timelines", isOn: binding(preferences, for: \.showsCompletedItems))
+                            Toggle("Limit planning views to high-priority projects", isOn: binding(preferences, for: \.showsOnlyHighPriorityProjects))
                         }
                     }
+                } else {
+                    EmptyStateView(
+                        title: "Preferences Are Missing",
+                        message: "The bootstrapper should create one shared preferences record automatically.",
+                        systemImage: "slider.horizontal.3"
+                    )
                 }
 
                 PanelCard(title: "Cloud Sync Preparation", subtitle: "The data model is containerized centrally, but CloudKit stays off until capabilities are enabled in Xcode.") {
@@ -44,7 +50,7 @@ struct SettingsView: View {
         .navigationTitle("Settings")
     }
 
-    private func binding<Value>(_ preferences: ViewPreferences, for keyPath: ReferenceWritableKeyPath<ViewPreferences, Value>) -> Binding<Value> {
+    private func binding<Value>(_ preferences: VisualizationPreferences, for keyPath: ReferenceWritableKeyPath<VisualizationPreferences, Value>) -> Binding<Value> {
         Binding(
             get: { preferences[keyPath: keyPath] },
             set: { preferences[keyPath: keyPath] = $0 }

@@ -4,28 +4,37 @@ import SwiftData
 struct DependenciesView: View {
     @Query private var projects: [Project]
     @Query private var dependencies: [Dependency]
+    @Query private var preferences: [VisualizationPreferences]
 
     private var rows: [DependencyRowProjection] {
-        PlanningProjectionFactory.dependencyRows(projects: projects, dependencies: dependencies)
+        PlanningProjectionFactory.dependencyRows(
+            projects: projects,
+            dependencies: dependencies,
+            showsOnlyHighPriorityProjects: preferences.first?.showsOnlyHighPriorityProjects ?? false
+        )
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 PanelCard(title: "Dependency Map", subtitle: "A simple arrow-first readout, prepared for richer critical-path logic later.") {
-                    HStack(spacing: 16) {
-                        MetricCard(
-                            title: "Links",
-                            value: "\(dependencies.count)",
-                            systemImage: "arrow.triangle.branch",
-                            tint: AppTheme.accent
-                        )
-                        MetricCard(
-                            title: "Projects",
-                            value: "\(projects.count)",
-                            systemImage: "square.stack.3d.up.fill",
-                            tint: AppTheme.projectColor(.cobalt)
-                        )
+                    VStack(alignment: .leading, spacing: 14) {
+                        Toggle("High-priority projects only", isOn: highPriorityOnlyBinding)
+
+                        HStack(spacing: 16) {
+                            MetricCard(
+                                title: "Links",
+                                value: "\(rows.count)",
+                                systemImage: "arrow.triangle.branch",
+                                tint: AppTheme.accent
+                            )
+                            MetricCard(
+                                title: "Projects",
+                                value: "\(visibleProjectCount)",
+                                systemImage: "square.stack.3d.up.fill",
+                                tint: AppTheme.projectColor(.cobalt)
+                            )
+                        }
                     }
                 }
 
@@ -67,6 +76,20 @@ struct DependenciesView: View {
             .padding(24)
         }
         .navigationTitle("Dependencies")
+    }
+
+    private var highPriorityOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { preferences.first?.showsOnlyHighPriorityProjects ?? false },
+            set: { preferences.first?.showsOnlyHighPriorityProjects = $0 }
+        )
+    }
+
+    private var visibleProjectCount: Int {
+        if preferences.first?.showsOnlyHighPriorityProjects == true {
+            return projects.filter(\.isHighPriority).count
+        }
+        return projects.count
     }
 }
 

@@ -53,6 +53,10 @@ enum PriorityLevel: String, Codable, CaseIterable, Identifiable, Comparable {
     static func < (lhs: PriorityLevel, rhs: PriorityLevel) -> Bool {
         lhs.rank < rhs.rank
     }
+
+    var isHighPriority: Bool {
+        self >= .high
+    }
 }
 
 enum ProjectStepKind: String, Codable, CaseIterable, Identifiable {
@@ -122,7 +126,6 @@ enum IdeaInboxState: String, Codable, CaseIterable, Identifiable {
 enum BubbleSizingCriterion: String, Codable, CaseIterable, Identifiable {
     case progress
     case priority
-    case effort
     case dependencyCount
 
     var id: String { rawValue }
@@ -133,10 +136,8 @@ enum BubbleSizingCriterion: String, Codable, CaseIterable, Identifiable {
             "Progress"
         case .priority:
             "Priority"
-        case .effort:
-            "Effort"
         case .dependencyCount:
-            "Dependencies"
+            "Dependency Count"
         }
     }
 }
@@ -161,4 +162,12 @@ enum ProjectSortCriterion: String, Codable, CaseIterable, Identifiable {
             "Progress"
         }
     }
+}
+
+enum GanttRowKind: String, Codable, CaseIterable, Identifiable {
+    case project
+    case task
+    case milestone
+
+    var id: String { rawValue }
 }

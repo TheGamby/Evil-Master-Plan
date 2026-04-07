@@ -53,3 +53,16 @@ struct TagChip: View {
             .background(.thinMaterial, in: Capsule())
     }
 }
+
+struct InboxStateBadge: View {
+    let state: IdeaInboxState
+
+    var body: some View {
+        Text(state.title)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(state == .open ? AppTheme.accent : .secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+    }
+}

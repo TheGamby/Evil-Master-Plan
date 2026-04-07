@@ -73,6 +73,15 @@ struct PlanningItemResolver {
     func dependencyCount(for reference: PlanningItemReference) -> Int {
         dependencyCounts[reference.id, default: 0]
     }
+
+    func contains(_ reference: PlanningItemReference) -> Bool {
+        switch reference.kind {
+        case .project:
+            projectsByID[reference.id] != nil
+        case .step:
+            stepsByID[reference.id] != nil
+        }
+    }
 }
 
 struct BubbleNodeProjection: Identifiable {
@@ -102,7 +111,7 @@ struct GanttRowProjection: Identifiable {
     let id: UUID
     let title: String
     let subtitle: String
-    let kind: ProjectStepKind
+    let kind: GanttRowKind
     let colorToken: ProjectColorToken
     let startDate: Date
     let endDate: Date
@@ -153,10 +162,15 @@ enum PlanningProjectionFactory {
         projects: [Project],
         dependencies: [Dependency],
         sizing: BubbleSizingCriterion,
-        canvasWidth: CGFloat
+        canvasWidth: CGFloat,
+        showsOnlyHighPriorityProjects: Bool = false
     ) -> BubbleNetworkProjection {
-        let resolver = PlanningItemResolver(projects: projects, dependencies: dependencies)
-        let sortedProjects = projects.sorted(using: SortDescriptor(\.createdAt))
+        let visibleProjects = filteredProjects(
+            from: projects,
+            showsOnlyHighPriorityProjects: showsOnlyHighPriorityProjects
+        )
+        let resolver = PlanningItemResolver(projects: visibleProjects, dependencies: dependencies)
+        let sortedProjects = visibleProjects.sorted(using: SortDescriptor(\.createdAt))
         let stepDepth = max(sortedProjects.map { $0.steps.count }.max() ?? 0, 1)
 
         let projectSpacing = max(canvasWidth / CGFloat(max(sortedProjects.count, 1) + 1), 220)
@@ -230,17 +244,32 @@ enum PlanningProjectionFactory {
     }
 
     static func gantt(projects: [Project], showCompletedItems: Bool) -> GanttProjection {
+        gantt(
+            projects: projects,
+            showCompletedItems: showCompletedItems,
+            showsOnlyHighPriorityProjects: false
+        )
+    }
+
+    static func gantt(
+        projects: [Project],
+        showCompletedItems: Bool,
+        showsOnlyHighPriorityProjects: Bool
+    ) -> GanttProjection {
         let calendar = Calendar.current
         var rows: [GanttRowProjection] = []
 
-        for project in projects.sorted(using: SortDescriptor(\.createdAt)) {
+        for project in filteredProjects(
+            from: projects,
+            showsOnlyHighPriorityProjects: showsOnlyHighPriorityProjects
+        ).sorted(using: SortDescriptor(\.createdAt)) {
             if let projectRange = resolvedRange(for: project) {
                 rows.append(
                     GanttRowProjection(
                         id: project.id,
                         title: project.title,
                         subtitle: project.priority.title,
-                        kind: .task,
+                        kind: .project,
                         colorToken: project.colorToken,
                         startDate: projectRange.start,
                         endDate: projectRange.end,
@@ -262,7 +291,7 @@ enum PlanningProjectionFactory {
                         id: step.id,
                         title: step.title,
                         subtitle: step.kind.title,
-                        kind: step.kind,
+                        kind: step.isMilestone ? .milestone : .task,
                         colorToken: project.colorToken,
                         startDate: range.start,
                         endDate: range.end,
@@ -284,11 +313,27 @@ enum PlanningProjectionFactory {
         )
     }
 
-    static func dependencyRows(projects: [Project], dependencies: [Dependency]) -> [DependencyRowProjection] {
-        let resolver = PlanningItemResolver(projects: projects, dependencies: dependencies)
+    static func dependencyRows(
+        projects: [Project],
+        dependencies: [Dependency],
+        showsOnlyHighPriorityProjects: Bool = false
+    ) -> [DependencyRowProjection] {
+        let visibleProjects = filteredProjects(
+            from: projects,
+            showsOnlyHighPriorityProjects: showsOnlyHighPriorityProjects
+        )
+        let resolver = PlanningItemResolver(projects: visibleProjects, dependencies: dependencies)
 
-        return dependencies.map { dependency in
-            DependencyRowProjection(
+        return dependencies.compactMap { dependency in
+            guard
+                !dependency.isSelfReference,
+                resolver.contains(dependency.sourceReference),
+                resolver.contains(dependency.targetReference)
+            else {
+                return nil
+            }
+
+            return DependencyRowProjection(
                 id: dependency.id,
                 sourceTitle: resolver.title(for: dependency.sourceReference),
                 sourceSubtitle: resolver.subtitle(for: dependency.sourceReference),
@@ -307,7 +352,9 @@ enum PlanningProjectionFactory {
 
         let focusItems = projects
             .flatMap { project in
-                project.sortedSteps.map { step in
+                project.sortedSteps
+                    .filter { $0.status != .done }
+                    .map { step in
                     FocusItemProjection(
                         id: step.id,
                         title: step.title,
@@ -345,11 +392,20 @@ enum PlanningProjectionFactory {
             return 36 + (resolver.progress(for: reference) * 38)
         case .priority:
             return 36 + CGFloat(resolver.priority(for: reference).rank * 10)
-        case .effort:
-            return reference.kind == .project ? 74 : 48
         case .dependencyCount:
             return 34 + CGFloat(resolver.dependencyCount(for: reference) * 8)
         }
+    }
+
+    private static func filteredProjects(
+        from projects: [Project],
+        showsOnlyHighPriorityProjects: Bool
+    ) -> [Project] {
+        guard showsOnlyHighPriorityProjects else {
+            return projects
+        }
+
+        return projects.filter(\.isHighPriority)
     }
 
     private static func resolvedRange(for project: Project) -> (start: Date, end: Date)? {

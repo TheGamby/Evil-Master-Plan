@@ -81,7 +81,86 @@ extension Project {
         steps.filter(\.isMilestone).count
     }
 
+    var isHighPriority: Bool {
+        priority.isHighPriority
+    }
+
     func touch(at date: Date = .now) {
         updatedAt = date
+    }
+
+    func setProgress(_ value: Double) {
+        progress = min(max(value, 0), 1)
+        touch()
+    }
+
+    func setStartDate(_ value: Date?) {
+        startDate = value
+        normalizeSchedule()
+        touch()
+    }
+
+    func setDueDate(_ value: Date?) {
+        dueDate = value
+        normalizeSchedule()
+        touch()
+    }
+
+    func setTags(from rawValue: String) {
+        tags = rawValue
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        touch()
+    }
+
+    @discardableResult
+    func addStep(title: String = "New Step") -> ProjectStep {
+        let step = ProjectStep(
+            project: self,
+            title: title,
+            notes: "",
+            status: .idea,
+            priority: .medium,
+            progress: 0,
+            startDate: startDate,
+            dueDate: dueDate,
+            sortOrder: nextSortOrder,
+            kind: .task
+        )
+        steps.append(step)
+        touch()
+        return step
+    }
+
+    @discardableResult
+    func addMilestone(title: String = "New Milestone") -> ProjectStep {
+        let milestoneDate = dueDate ?? startDate ?? .now
+        let step = ProjectStep(
+            project: self,
+            title: title,
+            notes: "",
+            status: .idea,
+            priority: .high,
+            progress: 0,
+            startDate: milestoneDate,
+            dueDate: milestoneDate,
+            sortOrder: nextSortOrder,
+            kind: .milestone
+        )
+        steps.append(step)
+        touch()
+        return step
+    }
+
+    private var nextSortOrder: Double {
+        (steps.map(\.sortOrder).max() ?? -1) + 1
+    }
+
+    private func normalizeSchedule() {
+        guard let startDate, let dueDate, dueDate < startDate else {
+            return
+        }
+        self.dueDate = startDate
     }
 }

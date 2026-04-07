@@ -43,4 +43,8 @@ extension Dependency {
     var targetReference: PlanningItemReference {
         PlanningItemReference(kind: targetKind, id: targetItemID)
     }
+
+    var isSelfReference: Bool {
+        sourceKind == targetKind && sourceItemID == targetItemID
+    }
 }

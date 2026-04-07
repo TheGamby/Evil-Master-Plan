@@ -47,7 +47,35 @@ extension ProjectStep {
         kind == .milestone
     }
 
+    var isHighPriority: Bool {
+        priority.isHighPriority
+    }
+
+    func setProgress(_ value: Double) {
+        progress = min(max(value, 0), 1)
+        touch()
+    }
+
+    func setStartDate(_ value: Date?) {
+        startDate = value
+        normalizeSchedule()
+        touch()
+    }
+
+    func setDueDate(_ value: Date?) {
+        dueDate = value
+        normalizeSchedule()
+        touch()
+    }
+
     func touch() {
         project?.touch()
+    }
+
+    private func normalizeSchedule() {
+        guard let startDate, let dueDate, dueDate < startDate else {
+            return
+        }
+        self.dueDate = startDate
     }
 }

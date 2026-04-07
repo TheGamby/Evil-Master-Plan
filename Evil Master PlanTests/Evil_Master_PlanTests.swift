@@ -35,13 +35,17 @@ struct Evil_Master_PlanTests {
     @Test
     func ganttProjectionUsesSharedProjectAndStepDates() {
         let snapshot = SeedData.makeSampleSnapshot(now: referenceDate)
-        let projection = PlanningProjectionFactory.gantt(projects: snapshot.projects, showCompletedItems: true)
+        let projection = PlanningProjectionFactory.gantt(
+            projects: snapshot.projects,
+            showCompletedItems: true,
+            showsOnlyHighPriorityProjects: false
+        )
 
         #expect(projection.rows.count >= snapshot.projects.count)
         #expect(projection.dayCount > 14)
         #expect(projection.rows.contains { $0.kind == .milestone })
-        #expect(projection.rows.contains { $0.indentLevel == 0 })
-        #expect(projection.rows.contains { $0.indentLevel == 1 })
+        #expect(projection.rows.contains { $0.kind == .project })
+        #expect(projection.rows.contains { $0.kind == .task })
     }
 
     @Test
@@ -51,13 +55,15 @@ struct Evil_Master_PlanTests {
             projects: snapshot.projects,
             dependencies: snapshot.dependencies,
             sizing: .progress,
-            canvasWidth: 900
+            canvasWidth: 900,
+            showsOnlyHighPriorityProjects: false
         )
         let dependencyProjection = PlanningProjectionFactory.bubbleNetwork(
             projects: snapshot.projects,
             dependencies: snapshot.dependencies,
             sizing: .dependencyCount,
-            canvasWidth: 900
+            canvasWidth: 900,
+            showsOnlyHighPriorityProjects: false
         )
 
         let activeProjectID = snapshot.projects[0].id
@@ -81,11 +87,37 @@ struct Evil_Master_PlanTests {
 
         let projectCount = try context.fetchCount(FetchDescriptor<Project>())
         let dependencyCount = try context.fetchCount(FetchDescriptor<Dependency>())
-        let preferenceCount = try context.fetchCount(FetchDescriptor<ViewPreferences>())
+        let preferenceCount = try context.fetchCount(FetchDescriptor<VisualizationPreferences>())
 
         #expect(projectCount == 4)
         #expect(dependencyCount == 4)
         #expect(preferenceCount == 1)
+    }
+
+    @Test
+    func samplePreferencesAreSingletonScoped() {
+        let snapshot = SeedData.makeSampleSnapshot(now: referenceDate)
+
+        #expect(snapshot.preferences.scope == VisualizationPreferences.defaultScope)
+        #expect(snapshot.preferences.showsOnlyHighPriorityProjects == false)
+    }
+
+    @Test
+    func projectAndStepMutationsEnforceBasicInvariants() {
+        let project = Project.starter(now: referenceDate)
+        project.setProgress(2)
+        project.setStartDate(referenceDate)
+        project.setDueDate(referenceDate.addingTimeInterval(-86_400))
+        let step = project.addMilestone(title: "Checkpoint")
+        step.setProgress(-1)
+        step.setStartDate(referenceDate)
+        step.setDueDate(referenceDate.addingTimeInterval(-86_400))
+
+        #expect(project.progress == 1)
+        #expect(project.dueDate == referenceDate)
+        #expect(step.progress == 0)
+        #expect(step.dueDate == referenceDate)
+        #expect(step.isMilestone)
     }
 
     private var referenceDate: Date {

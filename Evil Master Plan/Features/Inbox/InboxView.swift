@@ -6,6 +6,16 @@ struct InboxView: View {
     @Query(sort: [SortDescriptor(\IdeaInboxItem.createdAt, order: .reverse)]) private var inboxItems: [IdeaInboxItem]
     @State private var draftTitle = ""
     @State private var draftBody = ""
+    @State private var mutationError: String?
+
+    private var orderedInboxItems: [IdeaInboxItem] {
+        inboxItems.sorted {
+            if $0.state != $1.state {
+                return $0.state == .open
+            }
+            return $0.createdAt > $1.createdAt
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -30,19 +40,18 @@ struct InboxView: View {
                 }
 
                 PanelCard(title: "Inbox Queue", subtitle: "Promote an item when it deserves a real project.") {
-                    if inboxItems.isEmpty {
+                    if orderedInboxItems.isEmpty {
                         EmptyStateView(
                             title: "Inbox Is Clear",
                             message: "Drop rough ideas here before they disappear.",
                             systemImage: "tray"
                         )
                     } else {
-                        ForEach(inboxItems) { item in
+                        ForEach(orderedInboxItems) { item in
                             InboxCard(item: item, promoteAction: {
                                 promote(item)
                             }, archiveAction: {
-                                item.state = .archived
-                                item.touch()
+                                archive(item)
                             })
                         }
                     }
@@ -51,6 +60,24 @@ struct InboxView: View {
             .padding(24)
         }
         .navigationTitle("Inbox")
+        .alert("Inbox Update Failed", isPresented: mutationErrorBinding) {
+            Button("OK", role: .cancel) {
+                mutationError = nil
+            }
+        } message: {
+            Text(mutationError ?? "Unknown error")
+        }
+    }
+
+    private var mutationErrorBinding: Binding<Bool> {
+        Binding(
+            get: { mutationError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    mutationError = nil
+                }
+            }
+        )
     }
 
     private func addInboxItem() {
@@ -62,18 +89,26 @@ struct InboxView: View {
         modelContext.insert(IdeaInboxItem(title: title, body: draftBody))
         draftTitle = ""
         draftBody = ""
-        try? modelContext.save()
+        persistContext()
     }
 
     private func promote(_ item: IdeaInboxItem) {
-        let project = Project.starter(title: item.title)
-        project.summary = item.body.isEmpty ? project.summary : item.body
-        project.tags = ["inbox"]
-        item.linkedProject = project
-        item.state = .converted
-        item.touch()
+        let project = item.promoteToProject()
         modelContext.insert(project)
-        try? modelContext.save()
+        persistContext()
+    }
+
+    private func archive(_ item: IdeaInboxItem) {
+        item.archive()
+        persistContext()
+    }
+
+    private func persistContext() {
+        do {
+            try modelContext.saveIfNeeded()
+        } catch {
+            mutationError = error.localizedDescription
+        }
     }
 }
 
@@ -97,11 +132,7 @@ private struct InboxCard: View {
 
                 Spacer()
 
-                Text(item.state.title)
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.thinMaterial, in: Capsule())
+                InboxStateBadge(state: item.state)
             }
 
             HStack {
