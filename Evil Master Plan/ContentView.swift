@@ -1,66 +1,55 @@
-//
-//  ContentView.swift
-//  Evil Master Plan
-//
-//  Created by Jürgen Reichardt-Kron on 07.04.26.
-//
-
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @State private var selection: AppDestination? = .dashboard
+    @State private var didBootstrap = false
+    @State private var bootstrapError: String?
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        AppShellView(selection: $selection)
+            .fontDesign(.rounded)
+            .task {
+                await bootstrapIfNeeded()
             }
-#if os(macOS)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-#endif
-            .toolbar {
-#if os(iOS)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+            .alert("Bootstrap Failed", isPresented: bootstrapErrorBinding) {
+                Button("OK", role: .cancel) {
+                    bootstrapError = nil
                 }
-#endif
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
+            } message: {
+                Text(bootstrapError ?? "Unknown error")
             }
-        } detail: {
-            Text("Select an item")
-        }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
+    private var bootstrapErrorBinding: Binding<Bool> {
+        Binding(
+            get: { bootstrapError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    bootstrapError = nil
+                }
+            }
+        )
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+    @MainActor
+    private func bootstrapIfNeeded() async {
+        guard !didBootstrap else {
+            return
+        }
+
+        didBootstrap = true
+
+        do {
+            try DataBootstrapper.seedIfNeeded(in: modelContext)
+        } catch {
+            bootstrapError = error.localizedDescription
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(PreviewContainer.shared)
 }
