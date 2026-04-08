@@ -108,7 +108,7 @@ enum SeedData {
             status: .idea,
             priority: .medium,
             progress: 0.1,
-            startDate: calendar.date(byAdding: .day, value: 5, to: now),
+            startDate: nil,
             dueDate: calendar.date(byAdding: .day, value: 11, to: now),
             sortOrder: 1
         )
@@ -157,11 +157,11 @@ enum SeedData {
             summary: "Keep rough ideas frictionless until they deserve structure.",
             status: .idea,
             priority: .medium,
-            progress: 0.14,
+            progress: 0.06,
             createdAt: calendar.date(byAdding: .day, value: -5, to: now) ?? now,
             updatedAt: now,
-            startDate: now,
-            dueDate: calendar.date(byAdding: .day, value: 10, to: now),
+            startDate: nil,
+            dueDate: nil,
             tags: ["inbox", "capture"],
             colorToken: .rose
         )
@@ -173,11 +173,23 @@ enum SeedData {
             status: .idea,
             priority: .medium,
             progress: 0.1,
-            startDate: now,
-            dueDate: calendar.date(byAdding: .day, value: 6, to: now),
+            startDate: nil,
+            dueDate: nil,
             sortOrder: 0
         )
-        sketchbook.steps = [sketchRefine]
+        let sketchCapture = ProjectStep(
+            project: sketchbook,
+            title: "Capture mode checkpoint",
+            notes: "A light milestone for the first useful intake loop.",
+            status: .idea,
+            priority: .high,
+            progress: 0,
+            startDate: nil,
+            dueDate: nil,
+            sortOrder: 1,
+            kind: .milestone
+        )
+        sketchbook.steps = [sketchRefine, sketchCapture]
 
         let dependencies = [
             Dependency(
@@ -214,22 +226,63 @@ enum SeedData {
             ),
         ]
 
+        let shareSheetIdea = IdeaInboxItem(
+            title: "Quick-capture from Share Sheet",
+            body: "Long term: send links, text snippets, and screenshots directly into Inbox.",
+            createdAt: calendar.date(byAdding: .hour, value: -18, to: now) ?? now,
+            updatedAt: calendar.date(byAdding: .hour, value: -18, to: now) ?? now,
+            state: .open,
+            tags: ["capture", "sharing"],
+            priorityHint: .medium,
+            source: .shareSheet
+        )
+
+        let reviewIdea = IdeaInboxItem(
+            title: "Energy-aware focus mode",
+            body: "Surface only two meaningful next actions when attention is low.",
+            createdAt: calendar.date(byAdding: .hour, value: -11, to: now) ?? now,
+            updatedAt: calendar.date(byAdding: .hour, value: -5, to: now) ?? now,
+            state: .open,
+            tags: ["focus", "ux"],
+            priorityHint: .high,
+            source: .manualCapture
+        )
+        reviewIdea.markReviewing(at: calendar.date(byAdding: .hour, value: -4, to: now) ?? now)
+
+        let convertedIdea = IdeaInboxItem(
+            title: "Voice memo intake",
+            body: "Capture raw planning thoughts while walking, transcribe later.",
+            createdAt: calendar.date(byAdding: .day, value: -1, to: now) ?? now,
+            updatedAt: calendar.date(byAdding: .hour, value: -8, to: now) ?? now,
+            state: .open,
+            tags: ["voice", "capture"],
+            priorityHint: .high,
+            source: .voiceMemo
+        )
+        convertedIdea.markConverted(
+            target: .task,
+            project: pulse,
+            step: pulseToday,
+            at: calendar.date(byAdding: .hour, value: -6, to: now) ?? now
+        )
+
+        let archivedIdea = IdeaInboxItem(
+            title: "Old whiteboard import",
+            body: "Snapshot of a workshop wall that turned out to be redundant after Phase 4.",
+            createdAt: calendar.date(byAdding: .day, value: -6, to: now) ?? now,
+            updatedAt: calendar.date(byAdding: .day, value: -3, to: now) ?? now,
+            state: .open,
+            tags: ["archive", "cleanup"],
+            priorityHint: .low,
+            source: .imported
+        )
+        archivedIdea.archive(at: calendar.date(byAdding: .day, value: -2, to: now) ?? now)
+
         let inboxItems = [
-            IdeaInboxItem(
-                title: "Quick-capture from Share Sheet",
-                body: "Long term: send links, text snippets, and screenshots directly into Inbox.",
-                createdAt: calendar.date(byAdding: .hour, value: -18, to: now) ?? now
-            ),
-            IdeaInboxItem(
-                title: "Energy-aware focus mode",
-                body: "Surface only two meaningful next actions when attention is low.",
-                createdAt: calendar.date(byAdding: .hour, value: -7, to: now) ?? now
-            ),
-            IdeaInboxItem(
-                title: "Voice memo intake",
-                body: "Capture raw planning thoughts while walking, transcribe later.",
-                createdAt: calendar.date(byAdding: .hour, value: -2, to: now) ?? now
-            ),
+            shareSheetIdea,
+            reviewIdea,
+            convertedIdea,
+            archivedIdea,
         ]
 
         return SeedSnapshot(
@@ -237,7 +290,10 @@ enum SeedData {
             dependencies: dependencies,
             inboxItems: inboxItems,
             preferences: VisualizationPreferences(
+                appColorTheme: .emberDusk,
                 bubbleSizingCriterion: .priority,
+                bubbleGroupingMode: .status,
+                timelineScale: .week,
                 projectSortCriterion: .updatedAt,
                 showsCompletedItems: true,
                 showsOnlyHighPriorityProjects: false

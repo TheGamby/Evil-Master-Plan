@@ -43,6 +43,10 @@ final class ProjectStep {
 }
 
 extension ProjectStep {
+    var isOpen: Bool {
+        status.isOpen
+    }
+
     var isMilestone: Bool {
         kind == .milestone
     }
@@ -53,7 +57,46 @@ extension ProjectStep {
 
     func setProgress(_ value: Double) {
         progress = min(max(value, 0), 1)
+
+        if progress >= 0.999 {
+            status = .done
+        } else if status == .done {
+            status = .active
+        }
+
         touch()
+    }
+
+    func setStatus(_ value: ProjectStatus, at date: Date = .now) {
+        status = value
+
+        if value == .done {
+            progress = 1
+        } else if progress >= 0.999 {
+            progress = 0.9
+        }
+
+        touch(at: date)
+    }
+
+    func setPriority(_ value: PriorityLevel, at date: Date = .now) {
+        priority = value
+        touch(at: date)
+    }
+
+    func setKind(_ value: ProjectStepKind, at date: Date = .now) {
+        kind = value
+
+        if value == .milestone {
+            if let dueDate {
+                startDate = dueDate
+            } else if let startDate {
+                dueDate = startDate
+            }
+        }
+
+        normalizeSchedule()
+        touch(at: date)
     }
 
     func setStartDate(_ value: Date?) {
@@ -68,8 +111,8 @@ extension ProjectStep {
         touch()
     }
 
-    func touch() {
-        project?.touch()
+    func touch(at date: Date = .now) {
+        project?.touch(at: date)
     }
 
     private func normalizeSchedule() {

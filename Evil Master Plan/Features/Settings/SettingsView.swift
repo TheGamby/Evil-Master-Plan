@@ -10,9 +10,30 @@ struct SettingsView: View {
                 if let preferences = preferences.first {
                     PanelCard(title: "Visualization Preferences", subtitle: "Persisted in SwiftData so the app can evolve without inventing separate preference silos.") {
                         VStack(alignment: .leading, spacing: 16) {
+                            Picker("App Theme", selection: binding(preferences, for: \.appColorTheme, default: AppTheme.defaultStyle)) {
+                                ForEach(AppColorTheme.allCases) { theme in
+                                    Text(theme.title).tag(theme)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
                             Picker("Bubble Sizing", selection: binding(preferences, for: \.bubbleSizingCriterion)) {
                                 ForEach(BubbleSizingCriterion.allCases) { criterion in
                                     Text(criterion.title).tag(criterion)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
+                            Picker("Bubble Grouping", selection: binding(preferences, for: \.bubbleGroupingMode, default: .status)) {
+                                ForEach(BubbleGroupingMode.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.menu)
+
+                            Picker("Timeline Scale", selection: binding(preferences, for: \.timelineScale, default: .week)) {
+                                ForEach(TimelineScale.allCases) { scale in
+                                    Text(scale.title).tag(scale)
                                 }
                             }
                             .pickerStyle(.menu)
@@ -53,6 +74,13 @@ struct SettingsView: View {
     private func binding<Value>(_ preferences: VisualizationPreferences, for keyPath: ReferenceWritableKeyPath<VisualizationPreferences, Value>) -> Binding<Value> {
         Binding(
             get: { preferences[keyPath: keyPath] },
+            set: { preferences[keyPath: keyPath] = $0 }
+        )
+    }
+
+    private func binding<Value>(_ preferences: VisualizationPreferences, for keyPath: ReferenceWritableKeyPath<VisualizationPreferences, Value?>, default defaultValue: Value) -> Binding<Value> {
+        Binding(
+            get: { preferences[keyPath: keyPath] ?? defaultValue },
             set: { preferences[keyPath: keyPath] = $0 }
         )
     }

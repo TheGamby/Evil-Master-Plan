@@ -6,7 +6,8 @@ enum DataBootstrapper {
     static func seedIfNeeded(in context: ModelContext) throws {
         let projectCount = try context.fetchCount(FetchDescriptor<Project>())
         let inboxCount = try context.fetchCount(FetchDescriptor<IdeaInboxItem>())
-        let preferencesCount = try context.fetchCount(FetchDescriptor<VisualizationPreferences>())
+        let preferenceDescriptor = FetchDescriptor<VisualizationPreferences>()
+        let preferencesCount = try context.fetchCount(preferenceDescriptor)
 
         if projectCount == 0 && inboxCount == 0 {
             SeedData.installSampleContent(
@@ -15,6 +16,15 @@ enum DataBootstrapper {
             )
         } else if preferencesCount == 0 {
             context.insert(VisualizationPreferences.default)
+        }
+
+        let preferences = try context.fetch(preferenceDescriptor)
+        let didRepairAnyPreference = preferences.reduce(false) { didRepair, preference in
+            preference.repairLegacyDefaults() || didRepair
+        }
+
+        if didRepairAnyPreference {
+            try context.saveIfNeeded()
         }
 
         try context.saveIfNeeded()

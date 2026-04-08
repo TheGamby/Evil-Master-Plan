@@ -13,6 +13,7 @@ final class Project {
     var updatedAt: Date
     var startDate: Date?
     var dueDate: Date?
+    var archivedAt: Date?
     var tags: [String]
     var colorToken: ProjectColorToken
     @Relationship(deleteRule: .cascade, inverse: \ProjectStep.project) var steps: [ProjectStep]
@@ -28,6 +29,7 @@ final class Project {
         updatedAt: Date = .now,
         startDate: Date? = nil,
         dueDate: Date? = nil,
+        archivedAt: Date? = nil,
         tags: [String] = [],
         colorToken: ProjectColorToken = .ember,
         steps: [ProjectStep] = []
@@ -42,6 +44,7 @@ final class Project {
         self.updatedAt = updatedAt
         self.startDate = startDate
         self.dueDate = dueDate
+        self.archivedAt = archivedAt
         self.tags = tags
         self.colorToken = colorToken
         self.steps = steps
@@ -69,6 +72,10 @@ extension Project {
         steps.sorted(using: SortDescriptor(\.sortOrder))
     }
 
+    var isArchived: Bool {
+        archivedAt != nil
+    }
+
     var resolvedStartDate: Date? {
         startDate ?? steps.compactMap(\.startDate).min()
     }
@@ -81,6 +88,26 @@ extension Project {
         steps.filter(\.isMilestone).count
     }
 
+    var openStepCount: Int {
+        steps.filter(\.isOpen).count
+    }
+
+    var blockedStepCount: Int {
+        steps.filter { $0.status == .blocked }.count
+    }
+
+    var isBlocked: Bool {
+        status == .blocked || blockedStepCount > 0
+    }
+
+    var nextMilestones: [ProjectStep] {
+        sortedSteps
+            .filter { $0.isMilestone && $0.status != .done }
+            .sorted {
+                ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture)
+            }
+    }
+
     var isHighPriority: Bool {
         priority.isHighPriority
     }
@@ -91,7 +118,31 @@ extension Project {
 
     func setProgress(_ value: Double) {
         progress = min(max(value, 0), 1)
+
+        if progress >= 0.999 {
+            status = .done
+        } else if status == .done {
+            status = .active
+        }
+
         touch()
+    }
+
+    func setStatus(_ value: ProjectStatus, at date: Date = .now) {
+        status = value
+
+        if value == .done {
+            progress = 1
+        } else if progress >= 0.999 {
+            progress = 0.9
+        }
+
+        touch(at: date)
+    }
+
+    func setPriority(_ value: PriorityLevel, at date: Date = .now) {
+        priority = value
+        touch(at: date)
     }
 
     func setStartDate(_ value: Date?) {
@@ -107,26 +158,32 @@ extension Project {
     }
 
     func setTags(from rawValue: String) {
-        tags = rawValue
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        tags = Self.normalizedTags(from: rawValue)
         touch()
     }
 
     @discardableResult
-    func addStep(title: String = "New Step") -> ProjectStep {
+    func addStep(
+        title: String = "New Step",
+        notes: String = "",
+        status: ProjectStatus = .idea,
+        priority: PriorityLevel = .medium,
+        progress: Double = 0,
+        startDate: Date? = nil,
+        dueDate: Date? = nil,
+        kind: ProjectStepKind = .task
+    ) -> ProjectStep {
         let step = ProjectStep(
             project: self,
             title: title,
-            notes: "",
-            status: .idea,
-            priority: .medium,
-            progress: 0,
-            startDate: startDate,
-            dueDate: dueDate,
+            notes: notes,
+            status: status,
+            priority: priority,
+            progress: progress,
+            startDate: startDate ?? self.startDate,
+            dueDate: dueDate ?? self.dueDate,
             sortOrder: nextSortOrder,
-            kind: .task
+            kind: kind
         )
         steps.append(step)
         touch()
@@ -136,8 +193,7 @@ extension Project {
     @discardableResult
     func addMilestone(title: String = "New Milestone") -> ProjectStep {
         let milestoneDate = dueDate ?? startDate ?? .now
-        let step = ProjectStep(
-            project: self,
+        return addStep(
             title: title,
             notes: "",
             status: .idea,
@@ -145,12 +201,67 @@ extension Project {
             progress: 0,
             startDate: milestoneDate,
             dueDate: milestoneDate,
-            sortOrder: nextSortOrder,
             kind: .milestone
         )
-        steps.append(step)
+    }
+
+    func mergeTags(_ incomingTags: [String]) {
+        tags = Self.normalizedTags(tags + incomingTags)
         touch()
-        return step
+    }
+
+    func archive(at date: Date = .now) {
+        archivedAt = date
+        touch(at: date)
+    }
+
+    func restoreFromArchive(at date: Date = .now) {
+        archivedAt = nil
+        touch(at: date)
+    }
+
+    @discardableResult
+    func moveStep(_ step: ProjectStep, direction: StepMoveDirection, at date: Date = .now) -> Bool {
+        var orderedSteps = sortedSteps
+        guard let currentIndex = orderedSteps.firstIndex(where: { $0.id == step.id }) else {
+            return false
+        }
+
+        let targetIndex: Int
+        switch direction {
+        case .earlier:
+            targetIndex = currentIndex - 1
+        case .later:
+            targetIndex = currentIndex + 1
+        }
+
+        guard orderedSteps.indices.contains(targetIndex) else {
+            return false
+        }
+
+        let movingStep = orderedSteps.remove(at: currentIndex)
+        orderedSteps.insert(movingStep, at: targetIndex)
+        normalizeStepOrder(orderedSteps)
+        touch(at: date)
+        return true
+    }
+
+    func canMoveStep(_ step: ProjectStep, direction: StepMoveDirection) -> Bool {
+        guard let currentIndex = sortedSteps.firstIndex(where: { $0.id == step.id }) else {
+            return false
+        }
+
+        switch direction {
+        case .earlier:
+            return currentIndex > 0
+        case .later:
+            return currentIndex < sortedSteps.count - 1
+        }
+    }
+
+    func normalizeStepOrder(at date: Date = .now) {
+        normalizeStepOrder(sortedSteps)
+        touch(at: date)
     }
 
     private var nextSortOrder: Double {
@@ -162,5 +273,28 @@ extension Project {
             return
         }
         self.dueDate = startDate
+    }
+
+    private func normalizeStepOrder(_ orderedSteps: [ProjectStep]) {
+        for (index, step) in orderedSteps.enumerated() {
+            step.sortOrder = Double(index)
+        }
+    }
+
+    private static func normalizedTags(from rawValue: String) -> [String] {
+        normalizedTags(
+            rawValue
+                .split(separator: ",")
+                .map { String($0) }
+        )
+    }
+
+    private static func normalizedTags(_ rawTags: [String]) -> [String] {
+        var seen = Set<String>()
+
+        return rawTags
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0.lowercased()).inserted }
     }
 }

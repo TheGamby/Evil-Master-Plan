@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 enum AppDestination: String, CaseIterable, Identifiable, Hashable {
     case dashboard
@@ -14,7 +15,7 @@ enum AppDestination: String, CaseIterable, Identifiable, Hashable {
     var title: String {
         switch self {
         case .dashboard:
-            "Dashboard"
+            "Focus"
         case .projects:
             "Projects"
         case .bubbleNetwork:
@@ -52,7 +53,7 @@ enum AppDestination: String, CaseIterable, Identifiable, Hashable {
     var subtitle: String {
         switch self {
         case .dashboard:
-            "Focus and movement"
+            "Daily cockpit"
         case .projects:
             "Plan the work"
         case .bubbleNetwork:
@@ -65,6 +66,36 @@ enum AppDestination: String, CaseIterable, Identifiable, Hashable {
             "Capture fast"
         case .settings:
             "Tune visualization"
+        }
+    }
+}
+
+@Observable
+final class AppNavigationModel {
+    var selection: AppDestination? = .dashboard
+    var selectedProjectID: UUID?
+    var selectedStepID: UUID?
+    var selectedInboxItemID: UUID?
+
+    func openProject(_ projectID: UUID, stepID: UUID? = nil) {
+        selection = .projects
+        selectedProjectID = projectID
+        selectedStepID = stepID
+    }
+
+    func openInbox(_ itemID: UUID? = nil) {
+        selection = .inbox
+        selectedInboxItemID = itemID
+    }
+
+    func openDestination(_ destination: FocusDestination) {
+        switch destination {
+        case .project(let projectID):
+            openProject(projectID)
+        case .step(let projectID, let stepID):
+            openProject(projectID, stepID: stepID)
+        case .inbox(let itemID):
+            openInbox(itemID)
         }
     }
 }
