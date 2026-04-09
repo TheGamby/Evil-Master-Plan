@@ -9,6 +9,44 @@ struct SeedSnapshot {
 }
 
 enum SeedData {
+    static let sampleProjectMatchers: [(title: String, summary: String)] = [
+        (
+            title: "Atlas Launch System",
+            summary: "Ship the first durable planning release with visual navigation and a calm editing flow."
+        ),
+        (
+            title: "Pulse Dashboard",
+            summary: "Create a daily focus surface that feels more like a cockpit than admin software."
+        ),
+        (
+            title: "Dependency Lattice",
+            summary: "Make sequencing visible without forcing full PM ceremony."
+        ),
+        (
+            title: "Sketchbook Intake",
+            summary: "Keep rough ideas frictionless until they deserve structure."
+        ),
+    ]
+
+    static let sampleInboxMatchers: [(title: String, body: String)] = [
+        (
+            title: "Quick-capture from Share Sheet",
+            body: "Long term: send links, text snippets, and screenshots directly into Inbox."
+        ),
+        (
+            title: "Energy-aware focus mode",
+            body: "Surface only two meaningful next actions when attention is low."
+        ),
+        (
+            title: "Voice memo intake",
+            body: "Capture raw planning thoughts while walking, transcribe later."
+        ),
+        (
+            title: "Old whiteboard import",
+            body: "Snapshot of a workshop wall that turned out to be redundant after Phase 4."
+        ),
+    ]
+
     static func installSampleContent(
         in context: ModelContext,
         now: Date = .now,
@@ -299,5 +337,17 @@ enum SeedData {
                 showsOnlyHighPriorityProjects: false
             )
         )
+    }
+
+    static func isSampleProject(_ project: Project) -> Bool {
+        sampleProjectMatchers.contains { matcher in
+            project.title == matcher.title && project.summary == matcher.summary
+        }
+    }
+
+    static func isSampleInboxItem(_ item: IdeaInboxItem) -> Bool {
+        sampleInboxMatchers.contains { matcher in
+            item.title == matcher.title && item.body == matcher.body
+        }
     }
 }

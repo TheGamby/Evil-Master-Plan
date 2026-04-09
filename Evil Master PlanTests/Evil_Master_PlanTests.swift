@@ -278,7 +278,7 @@ struct Evil_Master_PlanTests {
     }
 
     @Test
-    func bootstrapSeedsOnlyEmptyStores() throws {
+    func bootstrapLeavesEmptyStoresEmptyExceptForPreferences() throws {
         let container = try PersistenceController.makeModelContainer(
             isStoredInMemoryOnly: true,
             enableCloudKitSync: false
@@ -289,11 +289,37 @@ struct Evil_Master_PlanTests {
         try DataBootstrapper.seedIfNeeded(in: context)
 
         let projectCount = try context.fetchCount(FetchDescriptor<Project>())
+        let inboxCount = try context.fetchCount(FetchDescriptor<IdeaInboxItem>())
         let dependencyCount = try context.fetchCount(FetchDescriptor<Dependency>())
         let preferenceCount = try context.fetchCount(FetchDescriptor<VisualizationPreferences>())
 
-        #expect(projectCount == 4)
-        #expect(dependencyCount == 4)
+        #expect(projectCount == 0)
+        #expect(inboxCount == 0)
+        #expect(dependencyCount == 0)
+        #expect(preferenceCount == 1)
+    }
+
+    @Test
+    func bootstrapRemovesLegacySampleContent() throws {
+        let container = try PersistenceController.makeModelContainer(
+            isStoredInMemoryOnly: true,
+            enableCloudKitSync: false
+        )
+        let context = container.mainContext
+
+        SeedData.installSampleContent(in: context)
+        try context.save()
+
+        try DataBootstrapper.seedIfNeeded(in: context)
+
+        let projectCount = try context.fetchCount(FetchDescriptor<Project>())
+        let inboxCount = try context.fetchCount(FetchDescriptor<IdeaInboxItem>())
+        let dependencyCount = try context.fetchCount(FetchDescriptor<Dependency>())
+        let preferenceCount = try context.fetchCount(FetchDescriptor<VisualizationPreferences>())
+
+        #expect(projectCount == 0)
+        #expect(inboxCount == 0)
+        #expect(dependencyCount == 0)
         #expect(preferenceCount == 1)
     }
 
