@@ -9,8 +9,13 @@ struct InboxView: View {
     @Query(sort: [SortDescriptor(\Project.updatedAt, order: .reverse)]) private var projects: [Project]
     @State private var draftTitle = ""
     @State private var draftBody = ""
+    @State private var draftTags = ""
+    @State private var draftPriorityHint: PriorityLevel?
+    @State private var draftSource: IdeaInboxSource? = .manualCapture
     @State private var activeFilter: InboxListFilter = .triage
+    @State private var isShowingQuickCaptureDetails = false
     @State private var selectedItemID: UUID?
+    @State private var isEditingSelectedItem = false
     @State private var conversionContext: InboxConversionSheetContext?
     @State private var mutationError: String?
     @State private var pendingDeletionItemID: UUID?
@@ -70,6 +75,41 @@ struct InboxView: View {
                 convert(context.item, using: request)
             }
         }
+        .sheet(isPresented: $isShowingQuickCaptureDetails) {
+            NavigationStack {
+                InboxQuickCaptureDetailsSheet(
+                    bodyText: $draftBody,
+                    tagsText: $draftTags,
+                    priorityHint: $draftPriorityHint,
+                    source: $draftSource
+                )
+            }
+        }
+        .sheet(isPresented: $isEditingSelectedItem) {
+            NavigationStack {
+                if let selectedItem {
+                    ScrollView {
+                        InboxEditPanel(item: selectedItem)
+                            .padding(24)
+                    }
+                    .navigationTitle("Edit Inbox Item")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                isEditingSelectedItem = false
+                            }
+                        }
+                    }
+                } else {
+                    EmptyStateView(
+                        title: "Select an Inbox Item",
+                        message: "Choose an item first, then open the editor.",
+                        systemImage: "tray"
+                    )
+                    .padding(24)
+                }
+            }
+        }
         .alert("Inbox Update Failed", isPresented: mutationErrorBinding) {
             Button("OK", role: .cancel) {
                 mutationError = nil
@@ -93,9 +133,18 @@ struct InboxView: View {
                 TextField("Idea title", text: $draftTitle)
                     .textFieldStyle(.roundedBorder)
 
-                TextField("Context, fragment, or next thought", text: $draftBody, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(3...6)
+                if !draftBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftPriorityHint != nil || !draftTags.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Label("Details added", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.projectColor(.cobalt))
+                }
+
+                Button {
+                    isShowingQuickCaptureDetails = true
+                } label: {
+                    Label("Add details", systemImage: "slider.horizontal.3")
+                }
+                .buttonStyle(.bordered)
 
                 Button(action: addInboxItem) {
                     Label("Send to Inbox", systemImage: "tray.and.arrow.down.fill")
@@ -148,7 +197,7 @@ struct InboxView: View {
                         Text(filter.title).tag(filter)
                     }
                 }
-                .pickerStyle(.menu)
+                .pickerStyle(.segmented)
 
                 if snapshot.sections.flatMap(\.items).isEmpty {
                     EmptyStateView(
@@ -202,6 +251,9 @@ struct InboxView: View {
             if let selectedItem {
                 InboxDetailPanel(
                     item: selectedItem,
+                    openEditorAction: {
+                        isEditingSelectedItem = true
+                    },
                     openConvertAction: {
                         conversionContext = InboxConversionSheetContext(item: selectedItem)
                     },
@@ -227,7 +279,7 @@ struct InboxView: View {
             } else {
                 EmptyStateView(
                     title: "Select an Inbox Item",
-                    message: "The detail panel is where an idea gets reviewed, enriched, converted, or archived.",
+                    message: "Use this area to understand context quickly. Edit fields in the dedicated editor page.",
                     systemImage: "sidebar.left"
                 )
             }
@@ -266,11 +318,18 @@ struct InboxView: View {
             title: title,
             body: draftBody,
             state: .open,
-            source: .manualCapture
+            tags: draftTags
+                .split(separator: ",")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) },
+            priorityHint: draftPriorityHint,
+            source: draftSource
         )
         modelContext.insert(item)
         draftTitle = ""
         draftBody = ""
+        draftTags = ""
+        draftPriorityHint = nil
+        draftSource = .manualCapture
         navigation.selectedInboxItemID = item.id
         selectedItemID = item.id
         activeFilter = .triage
@@ -398,12 +457,46 @@ private struct InboxQueueSection: View {
             }
 
             ForEach(section.items) { item in
-                Button {
-                    selectAction(item)
-                } label: {
-                    InboxQueueRow(item: item, isSelected: item.id == selectedItemID)
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        selectAction(item)
+                    } label: {
+                        InboxQueueRow(item: item, isSelected: item.id == selectedItemID)
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: 8) {
+                        if item.state == .open {
+                            Button("Review") {
+                                reviewAction(item)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+
+                        if item.canConvert {
+                            Button("Convert") {
+                                convertAction(item)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+
+                        if item.state == .archived {
+                            Button("Reopen") {
+                                reopenAction(item)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        } else if item.state != .converted {
+                            Button("Archive") {
+                                archiveAction(item)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
                 .contextMenu {
                     if item.state == .open {
                         Button("Start Review") {
@@ -500,7 +593,31 @@ private struct InboxQueueRow: View {
 }
 
 private struct InboxDetailPanel: View {
+    private enum PrimaryAction {
+        case openTarget
+        case convert
+        case startReview
+        case returnToNew
+        case returnToTriage
+
+        var title: String {
+            switch self {
+            case .openTarget:
+                "Open Target"
+            case .convert:
+                "Convert"
+            case .startReview:
+                "Start Review"
+            case .returnToNew:
+                "Return to New"
+            case .returnToTriage:
+                "Return to Triage"
+            }
+        }
+    }
+
     @Environment(\.appTheme) private var theme
+    let openEditorAction: () -> Void
     let openConvertAction: () -> Void
     let reviewAction: () -> Void
     let resetToNewAction: () -> Void
@@ -511,6 +628,7 @@ private struct InboxDetailPanel: View {
 
     init(
         item: IdeaInboxItem,
+        openEditorAction: @escaping () -> Void,
         openConvertAction: @escaping () -> Void,
         reviewAction: @escaping () -> Void,
         resetToNewAction: @escaping () -> Void,
@@ -519,6 +637,7 @@ private struct InboxDetailPanel: View {
         openTargetAction: @escaping () -> Void
     ) {
         self._item = Bindable(item)
+        self.openEditorAction = openEditorAction
         self.openConvertAction = openConvertAction
         self.reviewAction = reviewAction
         self.resetToNewAction = resetToNewAction
@@ -530,7 +649,7 @@ private struct InboxDetailPanel: View {
     var body: some View {
         PanelCard(
             title: item.title,
-            subtitle: "Keep the original context, then decide whether this stays an idea, becomes a project, becomes a step, or gets archived."
+            subtitle: "Read-first detail card. Edit title, notes, metadata, and tags in the dedicated editor page."
         ) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 10) {
@@ -545,6 +664,190 @@ private struct InboxDetailPanel: View {
                     }
                 }
 
+                if !item.trimmedBody.isEmpty {
+                    Text(item.trimmedBody)
+                        .foregroundStyle(theme.secondaryText)
+                }
+
+                metadataContent
+
+                VStack(alignment: .leading, spacing: 8) {
+                    metadataRow(label: "Created", value: item.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    metadataRow(label: "Updated", value: item.updatedAt.formatted(date: .abbreviated, time: .shortened))
+
+                    if let convertedAt = item.convertedAt {
+                        metadataRow(label: "Converted", value: convertedAt.formatted(date: .abbreviated, time: .shortened))
+                    }
+
+                    if let archivedAt = item.archivedAt {
+                        metadataRow(label: "Archived", value: archivedAt.formatted(date: .abbreviated, time: .shortened))
+                    }
+
+                    if let linkedStep = item.linkedStep, let linkedProject = item.linkedProject {
+                        metadataRow(label: "Target", value: "\(linkedProject.title) → \(linkedStep.title)")
+                    } else if let linkedProject = item.linkedProject {
+                        metadataRow(label: "Target", value: linkedProject.title)
+                    }
+                }
+
+                actionRow
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var metadataContent: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
+            MetricCard(
+                title: "State",
+                value: item.state.title,
+                systemImage: "flag.fill",
+                tint: theme.accent
+            )
+            MetricCard(
+                title: "Priority Hint",
+                value: item.priorityHint?.title ?? "None",
+                systemImage: "exclamationmark.circle",
+                tint: theme.priorityColor(item.priorityHint ?? .low)
+            )
+            MetricCard(
+                title: "Source",
+                value: item.source?.title ?? "Unknown",
+                systemImage: "square.and.arrow.down",
+                tint: theme.projectColor(.cobalt)
+            )
+            MetricCard(
+                title: "Tags",
+                value: item.tags.isEmpty ? "None" : "\(item.tags.count)",
+                systemImage: "tag.fill",
+                tint: theme.projectColor(.cyan)
+            )
+        }
+
+        if !item.tags.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(item.tags, id: \.self) { tag in
+                    TagChip(title: tag)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let primaryAction {
+                Button(primaryAction.title, action: runPrimaryAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.accent)
+            }
+
+            Button(action: openEditorAction) {
+                Label("Edit Item", systemImage: "square.and.pencil")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            if item.state == .open && primaryAction != .startReview {
+                Button("Start Review", action: reviewAction)
+                    .buttonStyle(.bordered)
+            }
+
+            if item.state == .reviewing && primaryAction != .returnToNew {
+                Button("Return to New", action: resetToNewAction)
+                    .buttonStyle(.bordered)
+            }
+
+            if item.canConvert && primaryAction != .convert {
+                Button("Convert", action: openConvertAction)
+                    .buttonStyle(.bordered)
+            }
+
+            if item.state == .converted && primaryAction != .openTarget {
+                Button("Open Target", action: openTargetAction)
+                    .buttonStyle(.bordered)
+            }
+
+            if item.state == .archived && primaryAction != .returnToTriage {
+                Button("Return to Triage", action: resetToNewAction)
+                    .buttonStyle(.bordered)
+            } else if item.state != .converted {
+                Button("Archive", action: archiveAction)
+                    .buttonStyle(.bordered)
+            }
+
+            Button("Delete Permanently", role: .destructive, action: deleteAction)
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private var primaryAction: PrimaryAction? {
+        if item.state == .converted {
+            return .openTarget
+        }
+
+        if item.canConvert {
+            return .convert
+        }
+
+        if item.state == .open {
+            return .startReview
+        }
+
+        if item.state == .reviewing {
+            return .returnToNew
+        }
+
+        if item.state == .archived {
+            return .returnToTriage
+        }
+
+        return nil
+    }
+
+    private func runPrimaryAction() {
+        switch primaryAction {
+        case .openTarget:
+            openTargetAction()
+        case .convert:
+            openConvertAction()
+        case .startReview:
+            reviewAction()
+        case .returnToNew:
+            resetToNewAction()
+        case .returnToTriage:
+            resetToNewAction()
+        default:
+            break
+        }
+    }
+
+    private func metadataRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.secondaryText)
+            Spacer()
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(theme.primaryText)
+        }
+    }
+}
+
+private struct InboxEditPanel: View {
+    @Bindable var item: IdeaInboxItem
+
+    init(item: IdeaInboxItem) {
+        self._item = Bindable(item)
+    }
+
+    var body: some View {
+        PanelCard(
+            title: item.title,
+            subtitle: "Edit fields without cluttering the read-focused detail card."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
                 TextField("Title", text: $item.title)
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: item.title) { _, _ in item.touch() }
@@ -575,27 +878,6 @@ private struct InboxDetailPanel: View {
 
                 TextField("Tags", text: tagsBinding)
                     .textFieldStyle(.roundedBorder)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    metadataRow(label: "Created", value: item.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    metadataRow(label: "Updated", value: item.updatedAt.formatted(date: .abbreviated, time: .shortened))
-
-                    if let convertedAt = item.convertedAt {
-                        metadataRow(label: "Converted", value: convertedAt.formatted(date: .abbreviated, time: .shortened))
-                    }
-
-                    if let archivedAt = item.archivedAt {
-                        metadataRow(label: "Archived", value: archivedAt.formatted(date: .abbreviated, time: .shortened))
-                    }
-
-                    if let linkedStep = item.linkedStep, let linkedProject = item.linkedProject {
-                        metadataRow(label: "Target", value: "\(linkedProject.title) → \(linkedStep.title)")
-                    } else if let linkedProject = item.linkedProject {
-                        metadataRow(label: "Target", value: linkedProject.title)
-                    }
-                }
-
-                actionRow
             }
         }
     }
@@ -606,54 +888,47 @@ private struct InboxDetailPanel: View {
             set: { item.setTags(from: $0) }
         )
     }
+}
 
-    @ViewBuilder
-    private var actionRow: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if item.state == .open {
-                Button("Start Review", action: reviewAction)
-                    .buttonStyle(.bordered)
+private struct InboxQuickCaptureDetailsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var bodyText: String
+    @Binding var tagsText: String
+    @Binding var priorityHint: PriorityLevel?
+    @Binding var source: IdeaInboxSource?
+
+    var body: some View {
+        Form {
+            Section("Optional Context") {
+                TextField("Context, fragment, or next thought", text: $bodyText, axis: .vertical)
+                    .lineLimit(4...8)
             }
 
-            if item.state == .reviewing {
-                Button("Return to New", action: resetToNewAction)
-                    .buttonStyle(.bordered)
-            }
+            Section("Metadata") {
+                Picker("Priority Hint", selection: $priorityHint) {
+                    Text("None").tag(Optional<PriorityLevel>.none)
+                    ForEach(PriorityLevel.allCases) { priority in
+                        Text(priority.title).tag(Optional(priority))
+                    }
+                }
 
-            if item.canConvert {
-                Button("Convert", action: openConvertAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(theme.accent)
-            }
+                Picker("Source", selection: $source) {
+                    Text("Unknown").tag(Optional<IdeaInboxSource>.none)
+                    ForEach(IdeaInboxSource.allCases) { source in
+                        Text(source.title).tag(Optional(source))
+                    }
+                }
 
-            if item.state == .converted {
-                Button("Open Target", action: openTargetAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(theme.projectColor(.cobalt))
+                TextField("Tags", text: $tagsText)
             }
-
-            if item.state == .archived {
-                Button("Return to Triage", action: resetToNewAction)
-                    .buttonStyle(.bordered)
-            } else if item.state != .converted {
-                Button("Archive", action: archiveAction)
-                    .buttonStyle(.bordered)
-            }
-
-            Button("Delete Permanently", role: .destructive, action: deleteAction)
-                .buttonStyle(.bordered)
         }
-    }
-
-    private func metadataRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.secondaryText)
-            Spacer()
-            Text(value)
-                .font(.caption)
-                .foregroundStyle(theme.primaryText)
+        .navigationTitle("Capture Details")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
         }
     }
 }

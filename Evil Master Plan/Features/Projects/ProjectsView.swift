@@ -28,6 +28,7 @@ struct ProjectsView: View {
     @Query private var preferences: [VisualizationPreferences]
     @State private var listScope: ProjectListScope = .active
     @State private var selectedProjectID: UUID?
+    @State private var isEditingSelectedProject = false
     @State private var mutationError: String?
     @State private var pendingDeletionProjectID: UUID?
 
@@ -133,6 +134,38 @@ struct ProjectsView: View {
         } message: {
             Text("Deleting \(pendingDeletionProject?.title ?? "this project") removes its steps, linked dependencies, and converted inbox targets that pointed into it.")
         }
+        .sheet(isPresented: $isEditingSelectedProject) {
+            NavigationStack {
+                if let project = selectedProject {
+                    ScrollView {
+                        ProjectEditorPanel(
+                            project: project,
+                            focusedStepID: project.id == navigation.selectedProjectID ? navigation.selectedStepID : nil,
+                            mutationError: $mutationError,
+                            archiveAction: { archive(project) },
+                            restoreAction: { restore(project) },
+                            requestDeleteAction: { pendingDeletionProjectID = project.id }
+                        )
+                        .padding(24)
+                    }
+                    .navigationTitle("Edit Project")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                isEditingSelectedProject = false
+                            }
+                        }
+                    }
+                } else {
+                    EmptyStateView(
+                        title: "Select a Project",
+                        message: "Choose a project from the list before opening the editor.",
+                        systemImage: "square.stack.3d.up"
+                    )
+                    .padding(24)
+                }
+            }
+        }
     }
 
     private var projectListPanel: some View {
@@ -236,18 +269,17 @@ struct ProjectsView: View {
     private var projectDetailPanel: some View {
         Group {
             if let project = selectedProject {
-                ProjectEditorPanel(
+                ProjectOverviewPanel(
                     project: project,
-                    focusedStepID: project.id == navigation.selectedProjectID ? navigation.selectedStepID : nil,
-                    mutationError: $mutationError,
-                    archiveAction: { archive(project) },
-                    restoreAction: { restore(project) },
-                    requestDeleteAction: { pendingDeletionProjectID = project.id }
+                    openEditorAction: {
+                        isEditingSelectedProject = true
+                    },
+                    createProjectAction: addProject
                 )
             } else {
                 EmptyStateView(
                     title: "Select a Project",
-                    message: "The detail area is now the main workspace for editing, restructuring, archiving, and safely deleting projects.",
+                    message: "Open a project to see key facts here. Editing and creation live in dedicated flows.",
                     systemImage: "sidebar.left"
                 )
             }
@@ -372,6 +404,87 @@ struct ProjectsView: View {
         selectedProjectID = visibleProjects.first?.id
         if navigation.selectedProjectID == nil {
             navigation.selectedProjectID = visibleProjects.first?.id
+        }
+    }
+}
+
+private struct ProjectOverviewPanel: View {
+    @Environment(\.appTheme) private var theme
+    let project: Project
+    let openEditorAction: () -> Void
+    let createProjectAction: () -> Void
+
+    var body: some View {
+        PanelCard(
+            title: project.title,
+            subtitle: "Information stays readable in this panel. Editing happens in a dedicated editor page."
+        ) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    StatusBadge(status: project.status)
+                    PriorityBadge(priority: project.priority)
+                    TagChip(title: "\(project.openStepCount) open steps")
+
+                    if project.isArchived {
+                        ArchiveBadge()
+                    }
+                }
+
+                if !project.summary.isEmpty {
+                    Text(project.summary)
+                        .foregroundStyle(theme.secondaryText)
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+                    MetricCard(
+                        title: "Progress",
+                        value: project.progress.formatted(.percent.precision(.fractionLength(0))),
+                        systemImage: "chart.bar.fill",
+                        tint: theme.projectColor(project.colorToken)
+                    )
+                    MetricCard(
+                        title: "Steps",
+                        value: "\(project.sortedSteps.count)",
+                        systemImage: "list.bullet.rectangle.portrait",
+                        tint: theme.accent
+                    )
+                    MetricCard(
+                        title: "Created",
+                        value: project.createdAt.formatted(date: .abbreviated, time: .omitted),
+                        systemImage: "calendar",
+                        tint: theme.projectColor(.cobalt)
+                    )
+                    MetricCard(
+                        title: "Due",
+                        value: project.resolvedDueDate?.formatted(date: .abbreviated, time: .omitted) ?? "Not set",
+                        systemImage: "calendar.badge.clock",
+                        tint: theme.projectColor(.rose)
+                    )
+                }
+
+                if !project.tags.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(project.tags, id: \.self) { tag in
+                            TagChip(title: tag)
+                        }
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    Button(action: openEditorAction) {
+                        Label("Edit Project", systemImage: "square.and.pencil")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.accent)
+
+                    Button(action: createProjectAction) {
+                        Label("New Project", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
         }
     }
 }
